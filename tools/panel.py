@@ -233,7 +233,8 @@ def header(layout):
 
 if __name__ == '__main__':
     bad = problems(MOUTH)
-    assert not bad, '; '.join(bad)
+    if bad:
+        raise SystemExit('panel problems: ' + '; '.join(bad))
     files = {os.path.join('res', 'Mouth.svg'): panel(MOUTH), os.path.join('src', 'layout.hpp'): header(MOUTH)}
     for rel, body in files.items():
         os.makedirs(os.path.join(ROOT, os.path.dirname(rel)), exist_ok=True)

@@ -37,7 +37,8 @@ struct Mouth : Module
     // saved with the patch
     int range = 1;            // index into RANGE_MIN / RANGE_MAX: Voice
     int pulse = 0;            // index into PULSE_MS
-    float floorDb = -60.f;    // noise floor from CAL
+    float floorDb = -60.f;    // noise floor from CAL, measured after GAIN
+    float calGainDb = 0.f;    // GAIN when CAL measured: the threshold moves with GAIN changes made since
     bool calibrated = false;
 
     // buffers, sized in onSampleRateChange
@@ -95,12 +96,14 @@ struct Mouth : Module
         configOutput (BRIGHT_OUTPUT, "Brightness (spectral centroid)");
         configOutput (ENV_OUTPUT, "Envelope (0-10 V)");
         lightDiv.setDivision (64);
-        onSampleRateChange();
+        resize (APP->engine->getSampleRate());
     }
 
-    void onSampleRateChange() override
+    void onSampleRateChange (const SampleRateChangeEvent& e) override { resize (e.sampleRate); }
+
+    void resize (float sampleRate)
     {
-        sr = APP->engine->getSampleRate();
+        sr = sampleRate;
         window = 1 << (int) std::lround (std::log2 (0.0213f * sr));   // the power of two nearest 21.3 ms
         hop = window / 4;
         yin.set (RANGE_MIN[0], RANGE_MAX[0], sr);   // the largest pitch buffer first, so a range change never allocates
@@ -125,10 +128,14 @@ struct Mouth : Module
         appliedRange = -1;   // process() sets the chosen range
     }
 
-    void onReset() override
+    void onReset (const ResetEvent& e) override
     {
+        Module::onReset (e);
+        if (training >= 0) bank.endTraining();
+        training = -1;
         for (int s = 0; s < 4; ++s) bank.clear (s);
         floorDb = -60.f;
+        calGainDb = 0.f;
         calibrated = false;
         range = 1;
         pulse = 0;
@@ -141,7 +148,8 @@ struct Mouth : Module
         for (int i = 0; i < n; ++i) dst[i] = ring[(start + i) & mask];
     }
 
-    float thresholdLin() { return std::pow (10.f, (floorDb + params[THRESH_PARAM].getValue()) / 20.f); }
+    float floorNowDb() { return floorDb + params[GAIN_PARAM].getValue() - calGainDb; }   // the floor at the current GAIN
+    float thresholdLin() { return std::pow (10.f, (floorNowDb() + params[THRESH_PARAM].getValue()) / 20.f); }
 
     void hitOrTrain()
     {
@@ -169,8 +177,13 @@ struct Mouth : Module
         const bool above = env.level > thr;
 
         // pitch, gate, velocity
-        last (yin.length(), pitchBuf.data());
-        const Yin::Result r = yin.process (pitchBuf.data());
+        Yin::Result r;
+        r.f0 = r.confidence = 0.f;
+        if (above)   // silence costs nothing (YIN is the module's heaviest step)
+        {
+            last (yin.length(), pitchBuf.data());
+            r = yin.process (pitchBuf.data());
+        }
         const bool voiced = r.f0 > 0.f && above;
         if (voiced)
         {
@@ -242,12 +255,17 @@ struct Mouth : Module
             if ((calSec -= args.sampleTime) <= 0.f)
             {
                 floorDb = clamp (10.f * std::log10 (calSum / std::max (1, calN) + 1e-12f), -100.f, -10.f);
+                calGainDb = params[GAIN_PARAM].getValue();
                 calibrated = true;
             }
         }
 
         if (resetTraining.exchange (false))
+        {
+            if (training >= 0) bank.endTraining();   // end first, so the slot's backup cannot bring it back
+            training = -1;
             for (int s = 0; s < 4; ++s) bank.clear (s);
+        }
 
         // training: one slot at a time
         for (int s = 0; s < 4; ++s)
@@ -315,6 +333,7 @@ struct Mouth : Module
         json_t* root = json_object();
         json_object_set_new (root, "triggers", json_string (bank.save().c_str()));
         json_object_set_new (root, "floorDb", json_real (floorDb));
+        json_object_set_new (root, "calGainDb", json_real (calGainDb));
         json_object_set_new (root, "calibrated", json_boolean (calibrated));
         json_object_set_new (root, "range", json_integer (range));
         json_object_set_new (root, "pulse", json_integer (pulse));
@@ -327,6 +346,8 @@ struct Mouth : Module
         if (json_is_string (t)) bank.load (json_string_value (t));   // malformed: the bank stays as it is (Rack holds the engine lock here)
         json_t* f = json_object_get (root, "floorDb");
         if (json_is_number (f) && std::isfinite (json_number_value (f))) floorDb = clamp ((float) json_number_value (f), -100.f, -10.f);
+        json_t* g = json_object_get (root, "calGainDb");
+        if (json_is_number (g) && std::isfinite (json_number_value (g))) calGainDb = clamp ((float) json_number_value (g), 0.f, 40.f);
         json_t* c = json_object_get (root, "calibrated");
         if (json_is_boolean (c)) calibrated = json_boolean_value (c);
         json_t* r = json_object_get (root, "range");
@@ -388,7 +409,7 @@ struct MouthWidget : ModuleWidget
         menu->addChild (createIndexPtrSubmenuItem ("Pitch range", { "Bass (50-500 Hz)", "Voice (70-1100 Hz)", "High (150-2000 Hz)" }, &m->range));
         menu->addChild (createIndexPtrSubmenuItem ("Trigger pulse", { "5 ms", "1 ms" }, &m->pulse));
         menu->addChild (createMenuItem ("Reset all training", "", [=] { m->resetTraining = true; }));
-        menu->addChild (createMenuLabel (m->calibrated ? string::f ("Noise floor: %.0f dBFS", m->floorDb) : "Noise floor: -60 dBFS (press CAL)"));
+        menu->addChild (createMenuLabel (string::f ("Noise floor at this GAIN: %.0f dBFS%s", m->floorNowDb(), m->calibrated ? "" : " (press CAL)")));
     }
 };
 
