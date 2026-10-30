@@ -4,6 +4,7 @@
 #include "test_env.h"
 #include "test_notelock.h"
 #include "test_onset.h"
+#include "test_trigbank.h"
 #include "test_yin.h"
 #include "FaceTap.h"
 
@@ -13,6 +14,7 @@ int main()
     testNoteLock();
     testEnv();
     testOnset();
+    testTrigBank();
     std::printf ("%s: %d failure(s)\n", failures ? "FAILED" : "passed", failures);
     return failures ? 1 : 0;
 }
