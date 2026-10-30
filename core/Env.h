@@ -11,7 +11,7 @@ struct Env
         rel = 1.f - std::exp (-1000.f / (releaseMs * sampleRate));
     }
 
-    float process (float x)
+    float process (float x)   // x finite: the module zeroes non-finite input before its high-pass
     {
         const float a = std::fabs (x);
         level += (a > level ? att : rel) * (a - level);

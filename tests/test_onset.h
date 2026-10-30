@@ -5,13 +5,13 @@
 #include "signals.h"
 
 // Bursts of noise (burstMs long) starting at each time in startsMs; returns the onset times in ms.
-inline std::vector<float> onsetsOf (const std::vector<float>& startsMs, float burstMs, float totalMs)
+inline std::vector<float> onsetsOf (const std::vector<float>& startsMs, float burstMs, float totalMs, float amp = 0.5f)
 {
     const int hop = 256, n = (int) (totalMs / 1000.f * SR);
     std::vector<float> x (n, 0.f);
     Noise rng (3);
     for (float s : startsMs)
-        for (int i = (int) (s / 1000.f * SR); i < (int) ((s + burstMs) / 1000.f * SR) && i < n; ++i) x[i] = 0.5f * rng.next();
+        for (int i = (int) (s / 1000.f * SR); i < (int) ((s + burstMs) / 1000.f * SR) && i < n; ++i) x[i] = amp * rng.next();
     Onset on;
     on.set (0.5f, 30.f, hop / SR);
     std::vector<float> got;
@@ -22,6 +22,26 @@ inline std::vector<float> onsetsOf (const std::vector<float>& startsMs, float bu
         if (on.process (e / hop, 1e-6f)) got.push_back ((h + hop) / SR * 1000.f);
     }
     return got;
+}
+
+// A 220 Hz tone from 50 ms whose level doubles at 250 ms (4x energy); onsets counted at sensitivity s.
+inline int stepOnsets (float s)
+{
+    const int hop = 256, n = (int) (0.5f * SR);
+    Onset on;
+    on.set (s, 30.f, hop / SR);
+    int count = 0;
+    for (int h = 0; h + hop <= n; h += hop)
+    {
+        float e = 0.f;
+        for (int i = h; i < h + hop; ++i)
+        {
+            const float t = (float) i / SR, a = t < 0.05f ? 0.f : t < 0.25f ? 0.1f : 0.2f, v = a * std::sin (2.f * PI_F * 220.f * t);
+            e += v * v;
+        }
+        count += on.process (e / hop, 1e-6f);
+    }
+    return count;
 }
 
 inline void testOnset()
@@ -36,4 +56,8 @@ inline void testOnset()
     check (onsetsOf ({100.f, 120.f}, 10.f, 400.f).size() == 1, "onset bursts 20 ms apart -> 1");
     check (onsetsOf ({100.f, 140.f}, 20.f, 400.f).size() == 2, "onset bursts 40 ms apart -> 2");
     check (onsetsOf ({}, 20.f, 400.f).empty(), "onset silence -> none");
+    check (onsetsOf ({100.f}, 20.f, 400.f, 5e-4f).empty(), "onset burst under the floor -> none");
+    // SENS: the 4x step fires at 100 % (2x needed) but not at 0 % (6x needed); both see the tone start
+    check (stepOnsets (1.f) == 2, "onset SENS 100 % hears the 4x step", stepOnsets (1.f));
+    check (stepOnsets (0.f) == 1, "onset SENS 0 % ignores the 4x step", stepOnsets (0.f));
 }
