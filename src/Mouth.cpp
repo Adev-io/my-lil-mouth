@@ -69,7 +69,7 @@ struct Mouth : Module
     float xT = 0.f, yT = 0.f, xV = 0.f, yV = 0.f, bright = 0.f, smooth = 0.001f;
 
     // calibration
-    float calSec = 0.f, calSum = 0.f;
+    float calSec = 0.f, calSum = 0.f, calFailSec = 0.f;
     int calN = 0;
 
     dsp::ClockDivider lightDiv;
@@ -89,7 +89,7 @@ struct Mouth : Module
         configOutput (NOTE_OUTPUT, "Note (V/Oct, held with note lock)");
         configOutput (RAW_OUTPUT, "Raw pitch (V/Oct, follows the voice)");
         configOutput (GATE_OUTPUT, "Gate (10 V while singing)");
-        configOutput (VEL_OUTPUT, "Velocity (0-10 V, loudness at the note start)");
+        configOutput (VEL_OUTPUT, "Velocity (0-10 V, loudness when the note started or last changed)");
         for (int i = 0; i < 4; ++i) configOutput (TRIG_OUTPUT + i, "Trigger " + std::to_string (i + 1));
         configOutput (X_OUTPUT, "Vowel X (F1: ee/oo low, ah high)");
         configOutput (Y_OUTPUT, "Vowel Y (F2: oo low, ee high)");
@@ -241,7 +241,7 @@ struct Mouth : Module
         env.process (hpY);
         face.push (clamp (hpY, -1.f, 1.f), args.sampleRate);
 
-        // calibration: mean square over 2 s
+        // calibration: the mean envelope over 2 s, the same follower the gate compares; refused when implausible
         if (calBtn.process (params[CAL_PARAM].getValue() > 0.f) && calSec <= 0.f)
         {
             calSec = 2.f;
@@ -250,13 +250,18 @@ struct Mouth : Module
         }
         if (calSec > 0.f)
         {
-            calSum += hpY * hpY;
+            calSum += env.level;
             ++calN;
             if ((calSec -= args.sampleTime) <= 0.f)
             {
-                floorDb = clamp (10.f * std::log10 (calSum / std::max (1, calN) + 1e-12f), -100.f, -10.f);
-                calGainDb = params[GAIN_PARAM].getValue();
-                calibrated = true;
+                const float db = 20.f * std::log10 (calSum / std::max (1, calN) + 1e-12f);
+                if (! inputs[IN_INPUT].isConnected() || db < -110.f || db > -30.f) calFailSec = 1.5f;   // nothing patched, or talking: keep the old floor
+                else
+                {
+                    floorDb = db;
+                    calGainDb = params[GAIN_PARAM].getValue();
+                    calibrated = true;
+                }
             }
         }
 
@@ -313,8 +318,9 @@ struct Mouth : Module
             const float dt = args.sampleTime * lightDiv.getDivision();
             blink = std::fmod (blink + dt, 0.4f);
             const bool on = blink < 0.2f;
-            lights[CAL_LIGHT + 0].setBrightness (calSec <= 0.f && calibrated ? 1.f : 0.f);
-            lights[CAL_LIGHT + 1].setBrightness (calSec > 0.f && on ? 1.f : 0.f);
+            calFailSec = std::max (0.f, calFailSec - dt);
+            lights[CAL_LIGHT + 0].setBrightness (calSec <= 0.f && calFailSec <= 0.f && calibrated ? 1.f : 0.f);
+            lights[CAL_LIGHT + 1].setBrightness ((calSec > 0.f && on) || calFailSec > 0.f ? 1.f : 0.f);
             const int pc = ((lock.note() % 12) + 12) % 12;
             for (int k = 0; k < 12; ++k) lights[NOTE_LIGHT + k].setBrightness (k != pc ? 0.f : gate ? 1.f : 0.25f);
             for (int s = 0; s < 4; ++s)

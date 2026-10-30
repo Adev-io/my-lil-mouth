@@ -10,7 +10,9 @@ a laptop's built-in mic hears the room too.
 
 1. Patch the mic into **IN** and say something. The mascot's mouth moves with the input.
 2. Turn **GAIN** up until a normal voice moves the mouth well (more gain also picks up more room noise).
-3. Be quiet and press **CAL**. It listens to the room for 2 seconds (blinking magenta), then stays lime.
+3. Be quiet and press **CAL**. It listens to the room for 2 seconds (blinking magenta), then stays lime. If CAL
+   lights solid magenta for a moment instead, it heard nothing (check the cable) or heard someone talking: the old
+   setting stays, try again. CAL remembers the GAIN it was done at, so turning GAIN later moves the threshold with it.
 4. **THRESH** is how far above that room sound your voice must be to count (default 12 dB).
 
 ## Pitch
@@ -20,7 +22,7 @@ a laptop's built-in mic hears the room too.
 | **NOTE** | V/Oct, held on the nearest semitone. It moves only when you sit more than **LOCK** cents away for two hops (about 11 ms), so vibrato does not wobble it: 50 is plain nearest-note, 100 waits until you reach the next note. **GLIDE** slides it to a new note (0 to 200 ms). |
 | **RAW** | V/Oct that follows your voice exactly, bends and vibrato included. |
 | **GATE** | 10 V while you sing. It drops for 2 ms when the note changes, so envelopes start again. |
-| **VEL** | 0 to 10 V: how loud you were when the note started. |
+| **VEL** | 0 to 10 V: how loud you were when the note started or last changed. |
 
 C4 = 0 V. The 12 lamps show the note (dim: the last note, after you stop). To sing in a key, patch NOTE through
 My lil Arpeggio's quantizer. Right-click *Pitch range* picks Bass (50 to 500 Hz), Voice (70 to 1100 Hz, default) or
@@ -37,6 +39,7 @@ Four slots, one per sound (kick, snare, hat, anything short).
 - **Play**: each sound fires the matching **TRIG** (10 V, 5 ms; right-click *Trigger pulse* for 1 ms) and flashes its ring.
   A sound unlike every trained one fires nothing.
 - **SENS**: how sharp a sound must start to count. Turn it down if talking fires triggers.
+- While any TRAIN button is held, no trigger fires: every sound goes to the slot being trained.
 
 Train with the sounds you will really play, short and sharp, the same way each time. Two sounds that are too alike
 will be mixed up: make them more different.
@@ -50,14 +53,14 @@ Voice looping: patch the TRIG outputs into a Merge and that into My lil Looper's
 | **X** | 0 to 10 V from the first formant: low for "ee" and "oo", high for "ah". |
 | **Y** | 0 to 10 V from the second formant: low for "oo", high for "ee". |
 | **BRIGHT** | 0 to 10 V: dark sounds low, hissy sounds high. |
-| **ENV** | 0 to 10 V: how loud you are right now (10 V = full scale). |
+| **ENV** | 0 to 10 V: how loud you are right now (a full-scale tone reads about 9 V). |
 
-X, Y and BRIGHT hold their last value while you are quiet. X and Y also hold while you sing above about 600 Hz,
+X, Y and BRIGHT hold their last value while you are quiet. X and Y also hold while you sing above about 400 Hz,
 where the vowel cannot be read reliably.
 
 ## Saving
 
-Trained sounds, the CAL floor, the pitch range and the trigger pulse are saved with the patch.
+Trained sounds, the CAL floor and the GAIN it was taken at, the pitch range and the trigger pulse are saved with the patch.
 
 ## Building
 
@@ -67,7 +70,8 @@ make test       # the core checks
 make dist       # the .vcvplugin
 ```
 
-On Windows, `pwsh -File tools/mk.ps1 [test|dist]` runs these in MSYS2.
+On Windows, `pwsh -File tools/mk.ps1 [test|dist]` runs these in MSYS2. The panel and `src/layout.hpp` come from
+`tools/panel.py` (Python 3 with fontTools; it reads DejaVu Sans from the Rack install, or the font named by RACK_FONT).
 
 ## License
 
