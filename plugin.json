@@ -1,0 +1,18 @@
+{
+  "slug": "MyLilMouth",
+  "name": "My lil Mouth",
+  "version": "2.0.0",
+  "license": "MIT",
+  "brand": "A_Development",
+  "author": "Ari Klopfer",
+  "authorEmail": "arik@adevelopment.dev",
+  "authorUrl": "https://adevelopment.dev",
+  "pluginUrl": "https://github.com/Adev-io/my-lil-mouth",
+  "manualUrl": "https://github.com/Adev-io/my-lil-mouth#readme",
+  "sourceUrl": "https://github.com/Adev-io/my-lil-mouth",
+  "donateUrl": "",
+  "changelogUrl": "https://github.com/Adev-io/my-lil-mouth/releases",
+  "modules": [
+    { "slug": "Mouth", "name": "My lil Mouth", "description": "Voice to CV: sung pitch to V/Oct and gate with note lock, four trained beatbox triggers, vowel, brightness and envelope CVs", "tags": ["Controller", "Utility", "Envelope follower"] }
+  ]
+}
