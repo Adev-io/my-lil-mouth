@@ -8,7 +8,7 @@
 
 struct Yin
 {
-    struct Result { float f0, confidence; };   // f0 = 0: unvoiced (no dip under the threshold)
+    struct Result { float f0, confidence; };   // f0 = 0: unvoiced (no dip under the threshold, or a period outside fMin..fMax)
 
     float threshold = 0.15f;   // provisional, unsourced: test_yin runs 0.10 and 0.15
 
@@ -24,7 +24,7 @@ struct Yin
 
     int length() const { return 2 * tauMax + 1; }
 
-    // x: length() samples, oldest first.
+    // x: length() samples, oldest first, all finite (the module guards its input).
     // ponytail: O(tauMax^2) per call (about 0.5 M multiply-adds at a 70 Hz floor); FFT autocorrelation if CPU matters
     Result process (const float* x)
     {
@@ -41,10 +41,11 @@ struct Yin
             run += s;
             d[tau] = run > 0.f ? s * tau / run : 1.f;   // cumulative mean normalised difference
         }
-        for (int tau = tauMin; tau <= tauMax; ++tau)
+        for (int tau = 2; tau <= tauMax; ++tau)   // from 2, not tauMin: a tone above fMax must not read as its subharmonic
         {
             if (d[tau] >= threshold) continue;
             while (tau < tauMax && d[tau + 1] < d[tau]) ++tau;   // first dip under the threshold: walk to its bottom
+            if (tau < tauMin) break;                                  // period shorter than 1 / fMax: unvoiced
             const float a = d[tau - 1], b = d[tau], c = d[tau + 1], den = a - 2.f * b + c;
             const float shift = den > 0.f ? 0.5f * (a - c) / den : 0.f;   // parabolic interpolation
             Result r;

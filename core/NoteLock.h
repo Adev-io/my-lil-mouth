@@ -1,6 +1,8 @@
 // NoteLock.h: sung f0 to a held semitone with hysteresis, and the glided NOTE voltage. No Rack dependency.
 // The note moves only when the voice sits more than LOCK cents from it for 2 hops in a row (like Dubler's
-// "pitch stickiness"; the values are our own). Each voiced start after silence snaps at once.
+// "pitch stickiness"; the values are our own). LOCK runs 50 to 100: 50 = plain rounding, 100 = only on reaching the
+// next semitone (under 50 would do nothing more, the nearest semitone has to change too). Each voiced start after
+// silence snaps at once; while unvoiced the output holds, even mid-glide.
 // Author: Ari Klopfer / A_Development. MIT
 #pragma once
 #include <cmath>
@@ -60,8 +62,9 @@ struct NoteLock
     // Per sample: the NOTE output, moving linearly to the target over GLIDE.
     float step (float sampleTime)
     {
+        if (! sounding) return out;   // unvoiced: hold, even mid-glide
         const float t = target();
-        if (rate <= 0.f) return out = t;
+        if (rate <= 0.f || glideSec <= 0.f) { rate = 0.f; return out = t; }   // GLIDE 0 also ends a glide under way
         const float dv = rate * sampleTime;
         if (std::fabs (t - out) <= dv) { out = t; rate = 0.f; }
         else out += out < t ? dv : -dv;
