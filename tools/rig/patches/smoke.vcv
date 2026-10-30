@@ -1,0 +1,8 @@
+{"version":"2.6.6","modules":[
+{"id":1,"plugin":"Fundamental","model":"VCO","version":"2.6.4","params":[],"pos":[0,0]},
+{"id":2,"plugin":"MyLilMouth","model":"Mouth","version":"2.0.0","params":[],"pos":[9,0]},
+{"id":3,"plugin":"Fundamental","model":"Scope","version":"2.6.4","params":[],"pos":[27,0]}],
+"cables":[
+{"id":1,"outputModuleId":1,"outputId":0,"inputModuleId":2,"inputId":0,"color":"#c8ff3a"},
+{"id":2,"outputModuleId":2,"outputId":0,"inputModuleId":3,"inputId":0,"color":"#ff3d9a"},
+{"id":3,"outputModuleId":2,"outputId":2,"inputModuleId":3,"inputId":1,"color":"#5ac8e6"}]}
