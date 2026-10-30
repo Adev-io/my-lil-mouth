@@ -42,7 +42,7 @@ inline void resonate (std::vector<float>& x, float f, float bw)
 
 // A sung vowel: an impulse train at f0, tilted -6 dB/octave above 100 Hz like a real voice (glottis -12, lips +6),
 // through resonators at the formants (bandwidth 80, 100, 120 Hz)
-inline std::vector<float> vowel (float f0, float f1, float f2, int n)
+inline std::vector<float> vowel (float f0, float f1, float f2, int n, float f3 = 3300.f)
 {
     std::vector<float> x (n, 0.f);
     const float period = SR / f0;
@@ -52,7 +52,7 @@ inline std::vector<float> vowel (float f0, float f1, float f2, int n)
     for (float& v : x) v = lp += tilt * (v - lp);
     resonate (x, f1, 80.f);
     resonate (x, f2, 100.f);
-    resonate (x, 3300.f, 120.f);   // F3, so the envelope has a ceiling like a real voice
+    resonate (x, f3, 120.f);   // F3, so the envelope has a ceiling like a real voice
     float peak = 0.f;
     for (float v : x) peak = std::fmax (peak, std::fabs (v));
     for (float& v : x) v *= 0.5f / peak;

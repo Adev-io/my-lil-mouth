@@ -6,7 +6,8 @@
 #pragma once
 #include "Features.h"
 #include <cmath>
-#include <cstdio>
+#include <iomanip>
+#include <locale>
 #include <sstream>
 #include <string>
 
@@ -24,17 +25,20 @@ struct TrigBank
 
     Slot slots[SLOTS];
 
+    // Starts training slot s; train() and endTraining() act on it until endTraining().
     void beginTraining (int s)
     {
+        slot = s;
         backup = slots[s];
         count = 0;
     }
 
+    int training() const { return slot; }   // -1 when no slot trains
+
     // One example while the slot's TRAIN button is held. Examples past MAX_EX are ignored.
-    void train (int s, const float* v)
+    void train (const float* v)
     {
-        (void) s;
-        if (count >= MAX_EX) return;
+        if (slot < 0 || count >= MAX_EX) return;
         for (int i = 0; i < DIM; ++i) ex[count][i] = v[i];
         ++count;
     }
@@ -42,8 +46,11 @@ struct TrigBank
     int examples() const { return count; }
 
     // Keeps the new sound if it has MIN_EX examples, else puts the old one back.
-    void endTraining (int s)
+    void endTraining()
     {
+        if (slot < 0) return;
+        const int s = slot;
+        slot = -1;
         if (count < MIN_EX)
         {
             slots[s] = backup;
@@ -79,38 +86,37 @@ struct TrigBank
         return bestD <= radius ? best : -1;
     }
 
-    // Text for the patch JSON: "v1", then per slot n, spread and the DIM centroid values.
+    // Text for the patch JSON: "v1", then per slot n, spread and the DIM centroid values. C locale, whatever the host's.
     std::string save() const
     {
-        std::string out = "v1";
-        char num[32];
+        std::ostringstream out;
+        out.imbue (std::locale::classic());
+        out << "v1" << std::setprecision (9);
         for (int s = 0; s < SLOTS; ++s)
         {
-            std::snprintf (num, sizeof num, " %d %.9g", slots[s].n, slots[s].spread);
-            out += num;
-            for (int i = 0; i < DIM; ++i)
-            {
-                std::snprintf (num, sizeof num, " %.9g", slots[s].c[i]);
-                out += num;
-            }
+            out << ' ' << slots[s].n << ' ' << slots[s].spread;
+            for (int i = 0; i < DIM; ++i) out << ' ' << slots[s].c[i];
         }
-        return out;
+        return out.str();
     }
 
-    // Leaves the bank untouched and returns false on anything malformed.
+    // Strict: whole tokens only, n 0..12, spread >= 0, finite values, nothing after the last one.
+    // Leaves the bank untouched and returns false on anything else.
     bool load (const std::string& text)
     {
         std::istringstream in (text);
+        in.imbue (std::locale::classic());
         std::string tag;
         if (! (in >> tag) || tag != "v1") return false;
         Slot next[SLOTS];
         for (int s = 0; s < SLOTS; ++s)
         {
-            if (! (in >> next[s].n >> next[s].spread) || next[s].n < 0 || next[s].n > MAX_EX || ! std::isfinite (next[s].spread))
-                return false;
+            if (! token (in, next[s].n) || next[s].n < 0 || next[s].n > MAX_EX) return false;
+            if (! token (in, next[s].spread) || ! std::isfinite (next[s].spread) || next[s].spread < 0.f) return false;
             for (int i = 0; i < DIM; ++i)
-                if (! (in >> next[s].c[i]) || ! std::isfinite (next[s].c[i])) return false;
+                if (! token (in, next[s].c[i]) || ! std::isfinite (next[s].c[i])) return false;
         }
+        if (in >> tag) return false;
         for (int s = 0; s < SLOTS; ++s) slots[s] = next[s];
         return true;
     }
@@ -118,7 +124,18 @@ struct TrigBank
 private:
     Slot backup;
     float ex[MAX_EX][DIM] = {};
-    int count = 0;
+    int count = 0, slot = -1;
+
+    // One whitespace-separated token that must parse completely as a T.
+    template <typename T>
+    static bool token (std::istream& in, T& value)
+    {
+        std::string t;
+        if (! (in >> t)) return false;
+        std::istringstream one (t);
+        one.imbue (std::locale::classic());
+        return (one >> value) && one.peek() == std::char_traits<char>::eof();
+    }
 
     static float dist (const float* a, const float* b)
     {

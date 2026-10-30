@@ -2,7 +2,8 @@
 // Decimate to about 12 kHz behind a 5 kHz low-pass, pre-emphasis 0.97, Hann, autocorrelation, Levinson-Durbin
 // order 10 (Praat: twice the 5 formants under a 5.5 kHz ceiling), then pick peaks of the LPC envelope on a
 // 512-point grid over 0..6 kHz with parabolic refinement. No polynomial root finder.
-// Plain LPC locks onto harmonics when f0 is high, so it reports nothing above MAX_F0.
+// Plain LPC locks onto harmonics when f0 is high (F1 off by more than 15 % from about 450 Hz), so it reports nothing
+// above maxF0. F2 is the first envelope peak above F1, so a strong F3 under 3 kHz cannot take its place.
 // Author: Ari Klopfer / A_Development. MIT
 #pragma once
 #include <algorithm>
@@ -13,12 +14,13 @@ struct Formant
 {
     enum { ORDER = 10, GRID = 512 };
     struct Result { float f1, f2; bool ok; };
-    float maxF0 = 600.f;   // starting value, tuned on the rig
+    float maxF0 = 400.f;   // test_formant passes up to 400 Hz; tuned on the rig
 
     void set (float sampleRate)
     {
         sr = sampleRate;
         dec = std::max (1, (int) std::lround (sampleRate / 12000.f));
+        y.reserve (1024);   // the decimated window is 256 at any rate: no allocation on the audio thread
         rate = sampleRate / (float) dec;
         // 4th-order Butterworth low-pass at 5 kHz: two RBJ biquads, Q 0.5412 and 1.3066
         const float qs[2] = {0.5412f, 1.3066f};
@@ -48,7 +50,7 @@ struct Formant
         r.f1 = r.f2 = 0.f;
         r.ok = false;
         if (f0 > maxF0) return r;
-        // low-pass, decimate
+        // low-pass, decimate (the filters start from rest every window: stateless)
         y.clear();
         Biquad a = lp[0], b = lp[1];
         for (int i = 0; i < n; ++i)
@@ -96,7 +98,7 @@ struct Formant
         }
         // peaks
         const float hzPerBin = 6000.f / GRID;
-        float best1 = -1e9f, best2 = -1e9f;
+        float best1 = -1e9f;
         for (int k = 1; k < GRID - 1; ++k)
         {
             if (! (env[k] > env[k - 1] && env[k] >= env[k + 1])) continue;
@@ -110,9 +112,10 @@ struct Formant
             if (! (env[k] > env[k - 1] && env[k] >= env[k + 1])) continue;
             const float den = env[k - 1] - 2.f * env[k] + env[k + 1];
             const float f = ((float) k + (den < 0.f ? 0.5f * (env[k - 1] - env[k + 1]) / den : 0.f)) * hzPerBin;
-            if (f > r.f1 && f >= 600.f && f <= 3000.f && env[k] > best2) { best2 = env[k]; r.f2 = f; }
+            if (f > r.f1 && f >= 600.f && f <= 3000.f) { r.f2 = f; break; }   // the first peak above F1
         }
         r.ok = r.f2 > 0.f;
+        if (! r.ok) r.f1 = 0.f;
         return r;
     }
 

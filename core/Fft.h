@@ -1,4 +1,4 @@
-// Fft.h: a small in-place radix-2 FFT, so the module needs with no extra dependency.
+// Fft.h: a small in-place radix-2 FFT, with no extra dependency.
 // Author: Ari Klopfer / A_Development · MIT
 #pragma once
 #include <cmath>

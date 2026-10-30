@@ -13,6 +13,7 @@
 #include "TrigBank.h"
 #include "Yin.h"
 #include "TalkingFace.hpp"
+#include <atomic>
 
 static const float RANGE_MIN[] = { 50.f, 70.f, 150.f };
 static const float RANGE_MAX[] = { 500.f, 1100.f, 2000.f };
@@ -57,6 +58,7 @@ struct Mouth : Module
     // triggers
     int pending = 0;          // hops until the onset's features are taken
     int training = -1;        // slot whose TRAIN is held
+    std::atomic<bool> resetTraining { false };   // set by the menu (UI thread), applied in process()
     float trainHeldSec = 0.f;
     dsp::PulseGenerator trig[4];
     float flash[4] = {};
@@ -151,7 +153,7 @@ struct Mouth : Module
         f.compute (specHalf, sr);
         if (training >= 0)
         {
-            bank.train (training, f.vec);
+            bank.train (f.vec);
             flash[training] = 0.06f;
             return;
         }
@@ -186,10 +188,11 @@ struct Mouth : Module
             lock.process (0.f, false);
         }
 
-        // triggers: the features are taken 2 hops after the onset, when the window holds the hit's first ~10 ms
+        // triggers: the features are taken 1 hop after the onset, so the half-window spans the onset hop (where the hit
+        // starts) and the hop after it
         if (pending > 0 && --pending == 0) hitOrTrain();
         onset.set (params[SENS_PARAM].getValue(), 30.f, hopSec);
-        if (onset.process (hopEnergy / hop, thr * thr)) pending = 2;
+        if (onset.process (hopEnergy / hop, thr * thr)) pending = 1;
 
         // brightness and vowel, held while the input is under the threshold
         if (! above) return;
@@ -243,6 +246,9 @@ struct Mouth : Module
             }
         }
 
+        if (resetTraining.exchange (false))
+            for (int s = 0; s < 4; ++s) bank.clear (s);
+
         // training: one slot at a time
         for (int s = 0; s < 4; ++s)
         {
@@ -255,8 +261,9 @@ struct Mouth : Module
             }
             if (training == s && ! held)
             {
-                if (trainHeldSec >= 3.f && bank.examples() == 0) bank.clear (s);
-                else bank.endTraining (s);
+                const bool wipe = trainHeldSec >= 3.f && bank.examples() == 0;
+                bank.endTraining();
+                if (wipe) bank.clear (s);
                 training = -1;
             }
         }
@@ -317,7 +324,7 @@ struct Mouth : Module
     void dataFromJson (json_t* root) override
     {
         json_t* t = json_object_get (root, "triggers");
-        if (json_is_string (t)) bank.load (json_string_value (t));   // malformed: the bank stays as it is
+        if (json_is_string (t)) bank.load (json_string_value (t));   // malformed: the bank stays as it is (Rack holds the engine lock here)
         json_t* f = json_object_get (root, "floorDb");
         if (json_is_number (f) && std::isfinite (json_number_value (f))) floorDb = clamp ((float) json_number_value (f), -100.f, -10.f);
         json_t* c = json_object_get (root, "calibrated");
@@ -380,7 +387,7 @@ struct MouthWidget : ModuleWidget
         menu->addChild (new MenuSeparator);
         menu->addChild (createIndexPtrSubmenuItem ("Pitch range", { "Bass (50-500 Hz)", "Voice (70-1100 Hz)", "High (150-2000 Hz)" }, &m->range));
         menu->addChild (createIndexPtrSubmenuItem ("Trigger pulse", { "5 ms", "1 ms" }, &m->pulse));
-        menu->addChild (createMenuItem ("Reset all training", "", [=] { for (int s = 0; s < 4; ++s) m->bank.clear (s); }));
+        menu->addChild (createMenuItem ("Reset all training", "", [=] { m->resetTraining = true; }));
         menu->addChild (createMenuLabel (m->calibrated ? string::f ("Noise floor: %.0f dBFS", m->floorDb) : "Noise floor: -60 dBFS (press CAL)"));
     }
 };
