@@ -12,4 +12,5 @@ click.ps1 moves the real cursor for ~0.4 s: don't run it while someone is using 
 dialog: it blocks the window and the scripts cannot close it.
 `patches/smoke.vcv`: Fundamental VCO sine (C4) into Mouth IN; Mouth NOTE and GATE into Fundamental Scope.
 Pass: Scope channel 1 reads 0.00 V (C4), channel 2 reads 10.00 V, the C lamp is lit.
-Close any other running Rack first: while another Rack.exe is up, the rig's Rack exits within seconds of launch.
+Close any other running Rack first: Rack is single-instance, so launch.ps1 refuses while another Rack.exe is up, and
+click.ps1 only clicks a rig Rack (its -rig- user dir) showing its own window, never the user's Rack or a message box.
